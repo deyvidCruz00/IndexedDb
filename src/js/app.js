@@ -1,11 +1,20 @@
-let req = indexedDB.open("jiroDV", 1);
+// Se incrementa versión a 2 para ejecutar onupgradeneeded y aplicar el índice en instalaciones previas.
+let req = indexedDB.open("heroDB", 1);
 
 req.onupgradeneeded = event => {
     let db = event.target.result;
     if (!db.objectStoreNames.contains("heroes")) {
+        // Punto 1: llave primaria para el object store Heroes usando keyPath: "id"
         db.createObjectStore("heroes", { 
             keyPath: "id"
          });
+    }
+
+    // Punto 2: crear índice en el object store Heroes.
+    // Nota: se obtiene la referencia al store tanto si ya existía como si se acaba de crear.
+    let heroesStoreUpgrade = event.target.transaction.objectStore("heroes");
+    if (!heroesStoreUpgrade.indexNames.contains("nombre_idx")) {
+        heroesStoreUpgrade.createIndex("nombre_idx", "nombre", { unique: false });
     }
 };
 
@@ -25,10 +34,6 @@ req.onsuccess = event => {
         console.error("Error en la transacción de actualización", event);
     };
 
-    transaction.oncomplete = event => {
-        console.log("Todos los registros han sido actualizados con éxito");
-    };
-
     let heroesStore = transaction.objectStore("heroes");
 
     for (let heroe of heroesModificados) {
@@ -43,11 +48,40 @@ req.onsuccess = event => {
             console.error("Error al modificar el héroe", event);
         };
     }
+
+    // Punto 3: leer registros del object store Heroes y mostrarlos en consola (getAll).
+    // Se ejecuta al completar la transacción de escritura para asegurar datos actualizados.
+    transaction.oncomplete = () => {
+        console.log("Todos los registros han sido actualizados con éxito");
+        let readTx = db.transaction("heroes", "readonly");
+        let readStore = readTx.objectStore("heroes");
+        let getAllRequest = readStore.getAll();
+
+        getAllRequest.onsuccess = e => {
+            console.log("Punto 3 - Registros de Heroes con getAll():", e.target.result);
+        };
+
+        getAllRequest.onerror = e => {
+            console.error("Error al leer registros con getAll()", e);
+        };
+
+        // Punto 4: recorrer registros con cursor y mostrarlos en consola.
+        let cursorRequest = readStore.openCursor();
+        cursorRequest.onsuccess = e => {
+            let cursor = e.target.result;
+            if (cursor) {
+                console.log("Punto 4 - Registro con cursor:", cursor.value);
+                cursor.continue();
+            } else {
+                console.log("Punto 4 - Fin del recorrido con cursor");
+            }
+        };
+
+        cursorRequest.onerror = e => {
+            console.error("Error al leer registros con cursor", e);
+        };
+    };
 };    
- 
-
-
- 
 
 
 req.onerror = e =>{
